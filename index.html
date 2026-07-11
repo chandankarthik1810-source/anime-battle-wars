@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anime Arena Battler 1v1</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #1a1a1a;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        h1 {
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        #gameUi {
+            width: 800px;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .health-bar-container {
+            width: 45%;
+            background-color: #555;
+            border: 2px solid #fff;
+            height: 25px;
+            position: relative;
+        }
+        .health-bar {
+            width: 100%;
+            height: 100%;
+            background-color: #ff3333;
+            transition: width 0.1s ease;
+        }
+        .char-name {
+            position: absolute;
+            left: 10px;
+            top: 2px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+        canvas {
+            border: 4px solid #fff;
+            background-color: #222;
+            box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
+        }
+        #controls {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Anime 1v1 Arena Prototype</h1>
+    
+    <div id="gameUi">
+        <div class="health-bar-container">
+            <div id="p1Health" class="health-bar"></div>
+            <span class="char-name" id="p1Name">Gojo</span>
+        </div>
+        <div class="health-bar-container">
+            <div id="p2Health" class="health-bar"></div>
+            <span class="char-name" id="p2Name">Sukuna</span>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <div id="controls">
+        <strong>Controls:</strong> Arrow Keys = Move | Left Click = M1 Attack <br>
+        Z = Move 1 | X = Move 2 | C = Move 3 | V = Ultimate | B = Block
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Character Templates
+        const charactersData = {
+            gojo: {
+                name: "Satoru Gojo",
+                maxHealth: 120,
+                m1: { name: "Cursed Strike", damage: 6, color: "#4A90E2" },
+                abilities: [
+                    { name: "Lapse: Blue", damage: 15, color: "#0000ff" },
+                    { name: "Reversal: Red", damage: 20, color: "#ff0000" },
+                    { name: "Hollow Purple", damage: 45, color: "#800080" },
+                    { name: "Infinite Void", damage: 60, color: "#ffffff" }
+                ]
+            },
+            sukuna: {
+                name: "Ryomen Sukuna",
+                maxHealth: 120,
+                m1: { name: "Cleave", damage: 7, color: "#ff5555" },
+                abilities: [
+                    { name: "Dismantle", damage: 12, color: "#aaaaaa" },
+                    { name: "Spiderweb", damage: 18, color: "#555555" },
+                    { name: "Fire Arrow", damage: 40, color: "#ff6600" },
+                    { name: "Malevolent Shrine", damage: 65, color: "#de1212" }
+                ]
+            }
+        };
+
+        // Instantiate Players
+        let player = {
+            x: 150,
+            y: 300,
+            width: 40,
+            height: 60,
+            speed: 5,
+            color: '#7fdbff',
+            data: charactersData.gojo,
+            health: charactersData.gojo.maxHealth,
+            isBlocking: false,
+            actionTimer: 0,
+            currentAction: "Idle"
+        };
+
+        let enemy = {
+            x: 600,
+            y: 300,
+            width: 40,
+            height: 60,
+            color: '#ff4136',
+            data: charactersData.sukuna,
+            health: charactersData.sukuna.maxHealth
+        };
+
+        // Track inputs
+        const keys = {};
+        let mouseX = 0;
+        let mouseY = 0;
+
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+            keys[k] = true;
+            keys[e.key] = true; // For arrow keys
+            
+            // Handle Skill Activations
+            if (['z', 'x', 'c', 'v', 'b'].includes(k)) {
+                handleAbilities(k);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const k = e.key.toLowerCase();
+            keys[k] = false;
+            keys[e.key] = false;
+            if (k === 'b') {
+                player.isBlocking = false;
+                player.currentAction = "Idle";
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && !player.isBlocking) {
+                useM1();
+            }
+        });
+
+        // Attack Mechanics
+        function useM1() {
+            player.currentAction = `M1: ${player.data.m1.name}`;
+            player.actionTimer = 15; // Show visual for 15 frames
+            dealDamage(player.data.m1.damage);
+        }
+
+        function handleAbilities(key) {
+            if (key === 'b') {
+                player.isBlocking = true;
+                player.currentAction = "Blocking";
+                return;
+            }
+            if (player.isBlocking) return;
+
+            let skillIndex = -1;
+            if (key === 'z') skillIndex = 0;
+            if (key === 'x') skillIndex = 1;
+            if (key === 'c') skillIndex = 2;
+            if (key === 'v') skillIndex = 3;
+
+            if (skillIndex !== -1) {
+                let skill = player.data.abilities[skillIndex];
+                player.currentAction = `Cast: ${skill.name}`;
+                player.actionTimer = 25; 
+                dealDamage(skill.damage);
+            }
+        }
+
+        function dealDamage(amount) {
+            // Check basic range proximity for demonstration 
+            let distance = Math.abs((player.x + player.width/2) - (enemy.x + enemy.width/2));
+            if (distance < 250) { // Simulating hit scanning within proximity
+                enemy.health -= amount;
+                if (enemy.health < 0) enemy.health = 0;
+                updateUi();
+            }
+        }
+
+        function updateUi() {
+            document.getElementById('p1Health').style.width = `${(player.health / player.data.maxHealth) * 100}%`;
+            document.getElementById('p2Health').style.width = `${(enemy.health / enemy.data.maxHealth) * 100}%`;
+        }
+
+        // Main Game Loop
+        function gameLoop() {
+            // 1. Movement logic
+            if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width) player.x += player.speed;
+
+            // 2. Clear Screen
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Ground line
+            ctx.strokeStyle = "#555";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 360);
+            ctx.lineTo(800, 360);
+            ctx.stroke();
+
+            // 3. Draw Enemy (Sukuna)
+            ctx.fillStyle = enemy.color;
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+            ctx.fillStyle = "#fff";
+            ctx.fillText(enemy.data.name, enemy.x - 10, enemy.y - 10);
+
+            // 4. Draw Player (Gojo)
+            ctx.fillStyle = player.isBlocking ? "#55efc4" : player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillStyle = "#fff";
+            ctx.fillText(player.data.name, player.x - 10, player.y - 10);
+
+            // 5. Render Ability FX overlay text
+            if (player.actionTimer > 0) {
+                ctx.fillStyle = "#ffd32a";
+                ctx.font = "bold 16px sans-serif";
+                ctx.fillText(player.currentAction, player.x - 20, player.y - 30);
+                
+                // Draw a simple laser projectile towards mouse to simulate the attack direction
+                ctx.strokeStyle = "#fffa65";
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(player.x + player.width/2, player.y + player.height/2);
+                ctx.lineTo(enemy.x + enemy.width/2, enemy.y + enemy.height/2);
+                ctx.stroke();
+
+                player.actionTimer--;
+            } else if (!player.isBlocking) {
+                player.currentAction = "Idle";
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize UI Names
+        document.getElementById('p1Name').innerText = player.data.name;
+        document.getElementById('p2Name').innerText = enemy.data.name;
+
+        // Run the game
+        gameLoop();
+    </script>
+</body>
+</html>
